@@ -283,4 +283,3 @@ def plot_degree_distributions(save=True):
         plt.show()
     plt.close(fig)
     return
-

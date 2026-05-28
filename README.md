@@ -1,0 +1,1 @@
+/home/lore/logseq/UNI_Graph/pages/Sergio Project.md
