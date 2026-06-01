@@ -2,6 +2,13 @@
 - ## Metriche Globali
 	- density clustering degree
 	- diametro average path
+	- Misure di centralità per-node with its distribution per side
+		- Degree centrality
+		- Eigenvector centrality
+		- Closeness centrality
+		- Betweeness centrality 
+		- k-core and coreness
+
 - ## Metriche su Community A e B
 	- density clustering degree
 	- distribuzioni di centralità alternative al grado con lables in evidenza
