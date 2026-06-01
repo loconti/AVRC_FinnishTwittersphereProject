@@ -11,16 +11,22 @@ from scipy.interpolate import make_interp_spline
 # ------------------------------------------------------------
 visual_layout_name = {'kk': 'kamada-kawai', 'fr': 'force'}
 VISUAL_LAYOUT = 'fr' # puoi cambiare in 'kk' se preferisci
-data_dir = Path(__file__).parent.parent / "Finland"
+data_dir = Path(__file__).parent / "Data"
+visual_dir = Path(__file__).parent / "Visual"
 graph_file = data_dir / "climate_19.graphml"
-
-G = ig.Graph.Read_GraphML(str(graph_file))
-
-# Layout condiviso per entrambi i plot
-layout = G.layout(VISUAL_LAYOUT)
-coords = np.array(layout.coords)
 scaling_factor = 15.0
-coords = coords * scaling_factor
+coords = np.array(())
+
+def load_graph(filename: str) -> ig.Graph:
+    _G = ig.Graph.Read_GraphML(str(graph_file))
+
+    # Layout condiviso per entrambi i plot
+    layout = _G.layout(VISUAL_LAYOUT)
+    coords = np.array(layout.coords)
+    coords = coords * scaling_factor
+    return _G
+
+G = load_graph(graph_file)
 
 # Mapping to core - periphery
 mappingCP = {
@@ -123,7 +129,7 @@ def plot_group_AB(save=True, only_periphery=False, niter=None):
 
     if save:
         filename = f"graPhoto_{VISUAL_LAYOUT}_group_AB_periphery.png" if only_periphery else f"graPhoto_{VISUAL_LAYOUT}_group_AB.png"
-        out_ab = data_dir / filename
+        out_ab = visual_dir / filename
         fig.savefig(out_ab, dpi=300, bbox_inches="tight")
         print(f"✓ Salvato: {out_ab}")
     else:
@@ -186,7 +192,7 @@ def plot_core_vs_periphery(save=True):
 
 
     if save:
-        out_core = data_dir / f"graPhoto_{VISUAL_LAYOUT}_core_vs_periphery.png"
+        out_core = visual_dir / f"graPhoto_{VISUAL_LAYOUT}_core_vs_periphery.png"
         fig.savefig(out_core, dpi=300, bbox_inches="tight")
         print(f"✓ Salvato: {out_core}")
     else:
@@ -276,7 +282,7 @@ def plot_degree_distributions(save=True):
     # --- 6. SALVATAGGIO ---
     plt.tight_layout()
     if save:
-        out_deg = data_dir / f"degree_distributions.png"
+        out_deg = visual_dir / f"degree_distributions.png"
         fig.savefig(out_deg, dpi=300, bbox_inches="tight")
         print(f"✓ Salvato: {out_deg}")
     else:
