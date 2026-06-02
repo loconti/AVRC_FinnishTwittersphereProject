@@ -15,9 +15,11 @@ data_dir = Path(__file__).parent / "Data"
 visual_dir = Path(__file__).parent / "Visual"
 graph_file = data_dir / "climate_19.graphml"
 scaling_factor = 15.0
+layout = None
 coords = np.array(())
 
 def load_graph(filename: str) -> ig.Graph:
+    global layout, coords
     _G = ig.Graph.Read_GraphML(str(graph_file))
 
     # Layout condiviso per entrambi i plot
@@ -57,6 +59,7 @@ def plot_group_AB(save=True, only_periphery=False, niter=None):
     Colora i nodi in base al gruppo (A o B) con rosso per A, blu per B.
     Se only_periphery=True, isola ed esibisce solo il sottografo della periferia.
     """
+    assert layout is not None, "Error: load graph before plot"
     layout_plot = layout
     if niter is not None:
         layout_plot= G.layout_fruchterman_reingold(grid='nogrid', niter=500)
