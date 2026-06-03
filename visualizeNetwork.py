@@ -17,6 +17,7 @@ graph_file = data_dir / "climate_19.graphml"
 scaling_factor = 15.0
 layout = None
 coords = np.array(())
+cmap = plt.get_cmap('tab10')
 
 def load_graph(filename: str) -> ig.Graph:
     global layout, coords
