@@ -9,6 +9,7 @@
 		- Betweeness centrality 
 		- k-core and coreness
 
+
 - ## Metriche su Community A e B
 	- density clustering degree
 	- distribuzioni di centralità alternative al grado con lables in evidenza

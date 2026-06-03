@@ -13,4 +13,3 @@ degrees = G.degree()
 bins = 7
 fig, ax = plt.subplots(figsize=(12,6), layout='standard')
 ax.hist(degrees, bins=bins, histtype='stepfilled', color='red', alpha=0.60, edgecolor='red', linewidth=2.0)
-
