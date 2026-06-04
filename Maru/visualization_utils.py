@@ -17,7 +17,12 @@ graph_file = data_dir / "climate_19.graphml"
 scaling_factor = 15.0
 layout = None
 coords = np.array(())
+
 cmap = plt.get_cmap('tab10')
+color_group = {'A': cmap(0), 'B': cmap(3)}
+CMAP_HEAT = 'Blues'
+FIGSIZE = (6, 4)
+FIGSIZE_LARGE = (12, 10)
 
 # Mapping to core - periphery
 mappingCP = {
@@ -26,6 +31,8 @@ mappingCP = {
     'A_PERIPHERY': 'Periphery',
     'B_PERIPHERY': 'Periphery'
 }
+
+
 
 
 # ------------------------------------------------------------
