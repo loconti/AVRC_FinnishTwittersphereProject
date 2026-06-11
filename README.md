@@ -37,6 +37,7 @@
 		- Distanza media dall'Elite
 		- diametro e average path
 	- Page Rank
+	- Simulare Segregation Paradox, mantenendo la distribuzione di grado come nel configuration model
 
 # Vecchi Punti
 
