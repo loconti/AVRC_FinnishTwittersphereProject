@@ -33,6 +33,7 @@
 		- Confronto della polarizzazione media generata con la polarizzazione reale
 - ## Extra
 	- SBM vs Modelli più complessi per Community detection
+	- Planted Partition model
 	- Analisi Massa Periferia
 		- Distanza media dall'Elite
 		- diametro e average path
