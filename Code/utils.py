@@ -47,3 +47,4 @@ def compute_ccdf(data: np.ndarray) -> tuple[np.ndarray,np.ndarray]:
     return x_values, ccdf
 
 cmap = plt.get_cmap('tab10')
+color_group = {'A': cmap(0), 'B': cmap(3)}
