@@ -44,4 +44,13 @@ def compute_ccdf(data: np.ndarray) -> tuple[np.ndarray,np.ndarray]:
     ccdf = np.array([np.sum(data>x) / N for x in x_values])
     return x_values, ccdf
 
+def ei_index(G: ig.Graph, attr_map):
+    edge_type = [attr_map[u] == attr_map[v] for u, v in G.get_edgelist()]
+    I = sum(edge_type)
+    E = sum(map(lambda x: not x, edge_type))
+    return (E - I)/(E + I)
+
+def nodes_all(G: ig.Graph) -> np.ndarray[int]:
+    return np.arange(len(G.vs['id']), dtype=int)
+
 cmap = plt.get_cmap('tab10')
