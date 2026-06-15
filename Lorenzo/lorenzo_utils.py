@@ -30,7 +30,6 @@ def load_all_centralities(G: ig.Graph, dumpfile: str=""):
         'closeness' : np.array(G.closeness()),
         'betweenness' : np.array(G.betweenness())
     }
-
     for cent in centralities:
         G.vs[cent] = centralities[cent]
 

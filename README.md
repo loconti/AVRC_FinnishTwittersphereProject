@@ -1,19 +1,22 @@
 # Punti di Lavoro
 - ## Metriche Globali
-	- density clustering degree
+	- density clustering
+	- degree
+		- fit lineare (log-log)
+		- confronto con modelli nulli Barabasi e Erdos-R.
 	- diametro average path
 	- Misure di centralità per-node with its distribution per side
 		- Degree centrality
 		- Eigenvector centrality
 		- Closeness centrality
-		- Betweeness centrality 
+		- Betweeness centrality
 		- k-core and coreness
 
 
 - ## Metriche su Community A e B
 	- density clustering degree
 	- distribuzioni di centralità alternative al grado con lables in evidenza
-		- Page Rank e Betweenness
+		- Betweenness
 	- confronto  dei risultati
 - ## Omofilia
 	- within- vs cross-label edge counts
