@@ -50,7 +50,11 @@ def ei_index(G: ig.Graph, attr_map):
     E = sum(map(lambda x: not x, edge_type))
     return (E - I)/(E + I)
 
+def cross_type_fraction(G: ig.Graph, attr_map):
+    cross = sum(1 for u, v in G.get_edgelist() if attr_map[u] != attr_map[v])
+    return cross / G.ecount()
+
 def nodes_all(G: ig.Graph) -> np.ndarray[int]:
-    return np.arange(len(G.vs['id']), dtype=int)
+    return np.arange(G.vcount(), dtype=int)
 
 cmap = plt.get_cmap('tab10')
