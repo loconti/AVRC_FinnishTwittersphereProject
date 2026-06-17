@@ -15,6 +15,10 @@ GRAPH_FILENAMES = [
     'climate_23.graphml', 'economy_23.graphml', 'education_23.graphml', 'immigration_23.graphml', 'social_23.graphml'
     ]
 
+GRAPH_2019 = ['climate_19.graphml', 'economy_19.graphml', 'education_19.graphml', 'immigration_19.graphml', 'social_19.graphml']
+GRAPH_2023 = ['climate_23.graphml', 'economy_23.graphml', 'education_23.graphml', 'immigration_23.graphml', 'social_23.graphml']
+TOPIC = ['Climate', 'Economy','Education', 'Immigration', 'Social']
+
 def load_graph(filename: str="") -> ig.Graph:
     """loads the graph with IGRAPH
     filename: the path to graph
