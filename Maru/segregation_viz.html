@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>11b — Force layouts</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="./_shared/chart.js?v=3"></script>
+    <link rel="stylesheet" href="./_shared/chart.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/styles/github.min.css">
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/highlight.min.js"></script>
+    <script>document.addEventListener("DOMContentLoaded", () => hljs.highlightAll());</script>
+    <style>
+        .force-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+                          gap: 0.4em 1.6em; margin: 0.8em 0; font-size: var(--text-md); }
+        .force-controls label { display: grid; grid-template-columns: 9em 3em 1fr;
+                                align-items: center; gap: 0.4em; }
+        .force-controls input[type="range"] { width: 100%; }
+        .force-controls .val { font-variant-numeric: tabular-nums; color: #444;
+                               text-align: right; }
+    </style>
+</head>
+
+<body>
+    <h1>11b — Force layouts</h1>
+    <p class="lead">A <strong>force layout</strong> places nodes by simulating physics: edges act like
+        springs, every node repels every other, a centring force keeps the result on screen, and a custom
+        boundary force keeps it inside the canvas. <code>d3-force</code> ships every piece of this physics
+        in one module.</p>
+
+    <h2>1. The minimum viable simulation</h2>
+    <p>Three forces are enough for a working layout — plus a hand-written boundary force so nodes don't
+        drift off the visible canvas:</p>
+    <pre><code>const sim = d3.forceSimulation(nodes)
+    .force("link",     d3.forceLink(links).id(d =&gt; d.id))
+    .force("charge",   d3.forceManyBody())
+    .force("center",   d3.forceCenter(innerW / 2, innerH / 2))
+    .force("boundary", boundaryForce(innerW, innerH))
+    .on("tick", ticked);
+
+function ticked() {
+    link.attr("x1", d =&gt; d.source.x).attr("y1", d =&gt; d.source.y)
+        .attr("x2", d =&gt; d.target.x).attr("y2", d =&gt; d.target.y);
+    node.attr("cx", d =&gt; d.x).attr("cy", d =&gt; d.y);
+}</code></pre>
+    <p>The <code>boundaryForce</code> helper (in <code>_shared/chart.js</code>) is a custom force — a
+        five-line function that clamps every node's <code>x</code>/<code>y</code> to the canvas
+        rectangle on every tick:</p>
+    <pre><code>function boundaryForce(innerW, innerH, pad = 4) {
+    let nodes;
+    function force() {
+        for (const d of nodes) {
+            const r = d.__r ?? pad;
+            d.x = Math.max(r, Math.min(innerW - r, d.x));
+            d.y = Math.max(r, Math.min(innerH - r, d.y));
+        }
+    }
+    force.initialize = _ =&gt; { nodes = _; };
+    return force;
+}</code></pre>
+    <p>Any function with an <code>initialize(nodes)</code> method and a callable signature qualifies as a
+        D3.js force — that's the full extension API. Here it just clips coordinates; you could equally
+        implement gravity, an obstacle field, or a custom potential.</p>
+    <p>While the simulation warms up the canvas is dimmed by an overlay; once <code>alpha</code> falls
+        below <code>alphaMin</code> the simulation emits an <code>"end"</code> event and the overlay
+        fades out (handled by <code>attachWarmup(svg, sim)</code>):</p>
+    <p><button id="restart-basic">Restart simulation</button></p>
+    <div class="container" id="demo-basic"></div>
+    <p class="example-link"><a href="examples/11b/01-basic-simulation.html" target="_blank" rel="noopener">↗ example</a></p>
+
+    <p><code>boundaryForce</code> hard-clips: nodes that would have drifted past the edge
+        end up squashed against it, which biases the layout near the boundary. The smoother
+        alternative is a pair of gentle attractive forces toward the centre —
+        <code>forceX(cx).strength(0.1)</code> and <code>forceY(cy).strength(0.1)</code> —
+        applied in §2 below.</p>
+    <p>A different alternative is <strong>fit-to-canvas</strong>: let the simulation run
+        free and rescale the wrapping <code>&lt;g&gt;</code> <em>after</em> it cools, so
+        the natural bounding box fills the canvas
+        (<a href="examples/11b/01-basic-simulation.html">live demo</a>). Useful as an
+        explicit zoom-to-fit, but node positions are no longer in canvas coordinates so
+        the transform fights any user zoom added later.</p>
+
+    <h2>2. The four standard forces</h2>
+    <p>In practice you almost always parameterize four forces:</p>
+    <pre><code>d3.forceSimulation(nodes)
+    .force("link",    d3.forceLink(links).id(d =&gt; d.id).distance(40))
+    .force("charge",  d3.forceManyBody().strength(-150))
+    .force("collide", d3.forceCollide().radius(d =&gt; r(d) + 2))
+    .force("center",  d3.forceCenter(cx, cy));</code></pre>
+    <table>
+        <thead><tr><th>Force</th><th>Tunable</th><th>Effect</th></tr></thead>
+        <tbody>
+            <tr><td><code>forceLink</code></td><td><code>.distance(d)</code></td>
+                <td>Resting length of the spring on each link.</td></tr>
+            <tr><td><code>forceManyBody</code></td><td><code>.strength(s)</code></td>
+                <td>Negative = repulsion (default <code>-30</code>); more negative spreads the graph out.</td></tr>
+            <tr><td><code>forceCollide</code></td><td><code>.radius(r)</code></td>
+                <td>Hard floor on the gap between node centres.</td></tr>
+            <tr><td><code>forceCenter</code></td><td><code>(cx, cy)</code></td>
+                <td>Anchor point for the layout's centre of mass.</td></tr>
+            <tr><td><code>forceX</code> / <code>forceY</code></td><td><code>.strength(s)</code></td>
+                <td>Per-axis pull toward a target — useful for elongating the layout horizontally.</td></tr>
+        </tbody>
+    </table>
+
+    <p><strong><code>forceCenter</code> vs <code>forceX</code> + <code>forceY</code>.</strong>
+        <code>forceCenter</code> is the obvious choice — "park the graph in the middle of the canvas".
+        It works on this dataset, but it has a known failure mode: on a graph with
+        <em>disconnected components</em>, <code>forceCenter</code> pins the overall centre of mass at
+        <code>(cx, cy)</code> but does nothing to stop individual components from drifting in opposite
+        directions. The modern default, used in the Observable canonical force-directed graph, is
+        <code>forceX(cx).strength(0.1) + forceY(cy).strength(0.1)</code>: every node feels a gentle
+        per-axis pull toward the centre, so components stay on-canvas without the centre-of-mass trick.
+        The §3 control panel and the L11 tutorials that follow combine both: <code>forceCenter</code>
+        as a safety net plus <code>forceX</code>/<code>forceY</code> as the actual anchor. For the
+        community-aware version where <em>each</em> node aims at its <em>community's</em> centroid,
+        see <a href="11f-progressive-build.html">11f stage 7</a> — same forces, per-datum target.</p>
+
+    <h2>3. The interactive control panel</h2>
+    <p>The demo below wires <strong>six</strong> simulation parameters to live sliders. Each input handler
+        does the same thing — call <code>simulation.stop()</code>, build a fresh
+        <code>forceSimulation</code> with the new parameters, attach a new <code>tick</code> handler:</p>
+    <pre><code>function rebuild() {
+    if (sim) sim.stop();
+    sim = d3.forceSimulation(nodes)
+        .force("link",    d3.forceLink(links).id(d =&gt; d.id).distance(linkDist))
+        .force("charge",  d3.forceManyBody().strength(charge))
+        .force("collide", d3.forceCollide().radius(4 + collide))
+        .force("center",  d3.forceCenter(cx, cy))
+        .force("x", d3.forceX(cx).strength(xStr))
+        .force("y", d3.forceY(cy).strength(yStr))
+        .alpha(0.6)
+        .alphaDecay(decay)
+        .on("tick", ticked);
+}</code></pre>
+    <p>Drag any of the six sliders below; the simulation reheats and re-converges:</p>
+    <div class="container" id="demo-tuned"></div>
+    <p class="example-link"><a href="examples/11b/02-tuned-forces.html" target="_blank" rel="noopener">↗ example</a></p>
+
+    <h2>4. Alpha — how the simulation cools down</h2>
+    <p>A force simulation has an internal <strong>alpha</strong> in [0, 1] — the temperature. Each tick
+        applies forces scaled by alpha, then alpha decays toward zero. When alpha drops below
+        <code>alphaMin</code> (default <code>0.001</code>) the simulation stops emitting
+        <code>tick</code> events and fires <code>"end"</code>.</p>
+    <pre><code>sim.alphaDecay(0.0228);   // default — settles in ~300 ticks
+sim.alpha(1).restart();   // reheat to 1 and resume</code></pre>
+    <ul>
+        <li><strong>Higher</strong> <code>alphaDecay</code> (e.g. <code>0.05</code>) — settles faster, less
+            wiggle, may freeze before a tangled graph untangles.</li>
+        <li><strong>Lower</strong> <code>alphaDecay</code> (e.g. <code>0.005</code>) — runs much longer, lets
+            communities migrate, but feels sluggish on every interaction.</li>
+        <li><strong>Reheat</strong> after a structural change (drag, filter, new data) by calling
+            <code>sim.alpha(0.5).restart()</code>.</li>
+    </ul>
+
+    <h2>5. Pinning a node</h2>
+    <p>A node with <code>fx</code>, <code>fy</code> set is treated as fixed: it does not move under any
+        force, and other nodes arrange around it. Setting them back to <code>null</code> releases it.</p>
+    <pre><code>const pinned = nodes.find(d =&gt; d.id === "Tyrion-Lannister");
+pinned.fx = innerW / 2;
+pinned.fy = innerH / 2;</code></pre>
+    <p>This is the same mechanism that makes drag work — the next tutorial wires a pointer to
+        <code>fx</code>/<code>fy</code>. Below: three high-centrality characters pinned at fixed anchors;
+        toggle off and the rest of the network re-equilibrates around the freed nodes:</p>
+    <p><button id="toggle-pins">Toggle pins on / off</button></p>
+    <div class="container" id="demo-pinned"></div>
+    <p class="example-link"><a href="examples/11b/03-pinned-nodes.html" target="_blank" rel="noopener">↗ example</a></p>
+
+    <div class="note"><strong>Takeaway.</strong> The simulation is the loop, the join is the rendering,
+        the <code>tick</code> handler is the hinge between them. Tune the four standard forces, add a
+        boundary force to keep the graph on canvas, reheat when state changes, and pin nodes by writing
+        <code>fx</code>/<code>fy</code>. The next tutorial layers drag, hover, and click on top of this.</div>
+
+    <h2>References</h2>
+    <ul>
+        <li><a href="https://github.com/d3/d3-force" target="_blank">d3-force</a> — every built-in force,
+            plus the custom-force API used here.</li>
+        <li><a href="https://observablehq.com/@d3/force-directed-graph" target="_blank">Observable —
+            force-directed graph</a> (Mike Bostock, the canonical example).</li>
+        <li><a href="https://observablehq.com/@d3/disjoint-force-directed-graph" target="_blank">Observable
+            — disjoint force-directed graph</a> (covers networks with multiple components).</li>
+    </ul>
+
+    <p class="tutorial-nav"><a href="11a-networkx-to-d3.html">← 11a — From NetworkX to D3.js</a> ·
+        <a href="index.html">L11 index</a> ·
+        <a href="11c-interactivity.html">11c — Interactivity →</a></p>
+
+    <script>
+        const DATA_URL = "./datasets/got.json";
+
+        d3.json(DATA_URL).then(raw => {
+
+            const cloneGraph = () => ({
+                nodes: raw.nodes.map(d => ({ ...d })),
+                links: raw.links.map(d => ({ ...d }))
+            });
+
+            // ============================================================
+            // §1. minimum viable simulation
+            // ============================================================
+            const cBasic = makeCanvas("#demo-basic", 600,
+                { margin: { top: 10, right: 10, bottom: 10, left: 10 } });
+            let basicSim;
+            function runBasic() {
+                cBasic.plot.selectAll("*").remove();
+                cBasic.root.selectAll(".warmup-overlay").remove();
+                const { nodes, links } = cloneGraph();
+                nodes.forEach(d => d.__r = 4);
+                const wrap = cBasic.plot.append("g");
+                const link = wrap.append("g").attr("stroke", "#bbb")
+                    .attr("stroke-opacity", 0.5)
+                    .selectAll("line").data(links).join("line")
+                    .attr("vector-effect", "non-scaling-stroke");
+                const node = wrap.append("g")
+                    .selectAll("circle").data(nodes).join("circle")
+                    .attr("r", 4).attr("fill", "#0072B2")
+                    .attr("stroke", "white").attr("stroke-width", 1)
+                    .attr("vector-effect", "non-scaling-stroke");
+                if (basicSim) basicSim.stop();
+                basicSim = d3.forceSimulation(nodes)
+                    .force("link", d3.forceLink(links).id(d => d.id))
+                    .force("charge", d3.forceManyBody())
+                    .force("center", d3.forceCenter(cBasic.innerW / 2, cBasic.innerH / 2))
+                    .force("boundary", boundaryForce(cBasic.innerW, cBasic.innerH))
+                    .on("tick", () => {
+                        link.attr("x1", d => d.source.x).attr("y1", d => d.source.y)
+                            .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+                        node.attr("cx", d => d.x).attr("cy", d => d.y);
+                    });
+                attachWarmup(cBasic.root, basicSim);
+            }
+            runBasic();
+            document.getElementById("restart-basic").addEventListener("click", runBasic);
+
+            // ============================================================
+            // §3. tuned forces with six sliders
+            // ============================================================
+            {
+                const ctrlWrap = d3.select("#demo-tuned");
+                const ctrl = ctrlWrap.append("div").attr("class", "force-controls");
+                const sliders = [
+                    { id: "linkDist", label: "link distance",   min: 5,    max: 100,  step: 1,    val: 30 },
+                    { id: "charge",   label: "charge strength", min: -300, max: 0,    step: 5,    val: -90 },
+                    { id: "collide",  label: "collide pad",     min: 0,    max: 15,   step: 1,    val: 2 },
+                    { id: "decay",    label: "alpha decay",     min: 0.005,max: 0.2,  step: 0.005,val: 0.03 },
+                    { id: "xStr",     label: "forceX strength", min: 0,    max: 0.5,  step: 0.01, val: 0.05 },
+                    { id: "yStr",     label: "forceY strength", min: 0,    max: 0.5,  step: 0.01, val: 0.05 }
+                ];
+                sliders.forEach(s => {
+                    const lbl = ctrl.append("label");
+                    lbl.append("span").text(s.label);
+                    lbl.append("span").attr("class", "val").attr("id", "tuned-" + s.id + "-val")
+                        .text(s.val);
+                    lbl.append("input").attr("type", "range")
+                        .attr("min", s.min).attr("max", s.max).attr("step", s.step)
+                        .attr("value", s.val).attr("id", "tuned-" + s.id);
+                });
+
+                const c = makeCanvas("#demo-tuned", 600,
+                    { margin: { top: 10, right: 10, bottom: 10, left: 10 } });
+                const { nodes, links } = cloneGraph();
+                nodes.forEach(d => d.__r = 4);
+                const wrap = c.plot.append("g");
+                const link = wrap.append("g")
+                    .attr("stroke", "#bbb").attr("stroke-opacity", 0.5)
+                    .selectAll("line").data(links).join("line")
+                    .attr("vector-effect", "non-scaling-stroke");
+                const node = wrap.append("g")
+                    .selectAll("circle").data(nodes).join("circle")
+                    .attr("r", 4).attr("fill", "#0072B2")
+                    .attr("stroke", "white").attr("stroke-width", 1)
+                    .attr("vector-effect", "non-scaling-stroke");
+
+                let sim;
+                function rebuild() {
+                    const v = id => +document.getElementById("tuned-" + id).value;
+                    sliders.forEach(s => {
+                        document.getElementById("tuned-" + s.id + "-val").textContent = v(s.id);
+                    });
+                    if (sim) sim.stop();
+                    sim = d3.forceSimulation(nodes)
+                        .force("link", d3.forceLink(links).id(d => d.id).distance(v("linkDist")))
+                        .force("charge", d3.forceManyBody().strength(v("charge")))
+                        .force("collide", d3.forceCollide().radius(4 + v("collide")))
+                        .force("center", d3.forceCenter(c.innerW / 2, c.innerH / 2))
+                        .force("x", d3.forceX(c.innerW / 2).strength(v("xStr")))
+                        .force("y", d3.forceY(c.innerH / 2).strength(v("yStr")))
+                        .alpha(0.6)
+                        .alphaDecay(v("decay"))
+                        .on("tick", () => {
+                            link.attr("x1", d => d.source.x).attr("y1", d => d.source.y)
+                                .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+                            node.attr("cx", d => d.x).attr("cy", d => d.y);
+                        });
+                }
+                rebuild();
+                sliders.forEach(s => {
+                    document.getElementById("tuned-" + s.id)
+                        .addEventListener("input", rebuild);
+                });
+            }
+
+            // ============================================================
+            // §5. pinned nodes
+            // ============================================================
+            {
+                const c = makeCanvas("#demo-pinned", 600,
+                    { margin: { top: 10, right: 10, bottom: 10, left: 10 } });
+                const { nodes, links } = cloneGraph();
+                nodes.forEach(d => d.__r = 5);
+                const cx = c.innerW / 2, cy = c.innerH / 2;
+
+                const top3 = [...nodes].sort((a, b) => b.bc - a.bc).slice(0, 3);
+                const pinTargets = [
+                    { id: top3[0].id, fx: cx,         fy: cy - 110 },
+                    { id: top3[1].id, fx: cx - 140,   fy: cy + 90 },
+                    { id: top3[2].id, fx: cx + 140,   fy: cy + 90 }
+                ];
+
+                const wrap = c.plot.append("g");
+                const link = wrap.append("g").attr("stroke", "#bbb").attr("stroke-opacity", 0.5)
+                    .selectAll("line").data(links).join("line")
+                    .attr("vector-effect", "non-scaling-stroke");
+                const node = wrap.append("g")
+                    .selectAll("circle").data(nodes).join("circle")
+                    .attr("r", d => pinTargets.some(p => p.id === d.id) ? 8 : 4)
+                    .attr("fill", d => pinTargets.some(p => p.id === d.id) ? "#D55E00" : "#0072B2")
+                    .attr("stroke", "white").attr("stroke-width", 1)
+                    .attr("vector-effect", "non-scaling-stroke");
+
+                let pinsOn = true;
+                function applyPins() {
+                    nodes.forEach(d => { d.fx = null; d.fy = null; });
+                    if (pinsOn) {
+                        pinTargets.forEach(p => {
+                            const n = nodes.find(d => d.id === p.id);
+                            if (n) { n.fx = p.fx; n.fy = p.fy; }
+                        });
+                    }
+                }
+                applyPins();
+                const sim = d3.forceSimulation(nodes)
+                    .force("link", d3.forceLink(links).id(d => d.id).distance(35))
+                    .force("charge", d3.forceManyBody().strength(-90))
+                    .force("collide", d3.forceCollide().radius(6))
+                    .force("center", d3.forceCenter(cx, cy))
+                    .on("tick", () => {
+                        link.attr("x1", d => d.source.x).attr("y1", d => d.source.y)
+                            .attr("x2", d => d.target.x).attr("y2", d => d.target.y);
+                        node.attr("cx", d => d.x).attr("cy", d => d.y);
+                    });
+                document.getElementById("toggle-pins").addEventListener("click", () => {
+                    pinsOn = !pinsOn;
+                    applyPins();
+                    sim.alpha(0.5).restart();
+                });
+            }
+        });
+    </script>
+</body>
+
+</html>
