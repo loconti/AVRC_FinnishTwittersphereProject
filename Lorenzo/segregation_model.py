@@ -39,7 +39,7 @@ def segregation_step(G: ig.Graph, node: int, labels: tuple=None, nodes=None) -> 
     return 0
 
 def segregation_sim(G: ig.Graph, satisfaction_treshold: float=0.5, max_step=1000, 
-                    seed=42, max_satisfactin=0.95) -> Generator[ig.Graph]:
+                    seed=42, max_satisfaction=0.95) -> Generator[ig.Graph]:
     """Segregation model for networks
     Return: a graph for each step"""
     np.random.seed(seed)
@@ -85,7 +85,7 @@ def segregation_sim(G: ig.Graph, satisfaction_treshold: float=0.5, max_step=1000
         result_statistics['segregation_index'] = np.mean(nodes_satisfaction)
         result_statistics['nodes_failures'] = tuple(nodes_failures)
         
-        if result_statistics['nodes_changed_step'] and result_statistics['satisfaction_rate'] < max_satisfactin:
+        if result_statistics['nodes_changed_step'] and result_statistics['satisfaction_rate'] < max_satisfaction:
             yield G_sim, dict(**result_statistics)
         else:
             break
