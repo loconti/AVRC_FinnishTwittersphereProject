@@ -39,7 +39,7 @@ mappingCP = {
 
 
 def plot_group_AB(G, layout=None, save=True, only_periphery=False, niter=None, 
-    scaling_factor=1.0, mappingCP=None, visual_dir=Path(".")):
+                  scaling_factor=1.0, mappingCP=None, visual_dir=Path(".")):
     """
     Colora i nodi in base al gruppo (A o B) con rosso per A, blu per B.
     Se only_periphery=True, isola ed esibisce solo il sottografo della periferia.

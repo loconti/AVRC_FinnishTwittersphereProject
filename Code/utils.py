@@ -23,12 +23,21 @@ def load_graph(filename: str="") -> ig.Graph:
         filename = DATA_DIR + DEFAULT_GRAPH
     return ig.Graph.Read_GraphML(filename)
 
-def load_all_centralities(G: ig.Graph, dumpfile: str=""):
+def load_all_centralities(G: ig.Graph, dumpfile: str="") -> dict:
+    """calcola le misure di centralità normalizzate e le carica come labels nel grafo
+    dumpfile: Se presente viene generato un nuovo file graphml con il grafo aggiornato
+    Return: Il dizionario delle centralità calcolate
+    """
+    N = G.vcount()
+    
+    denom_betw = ((N - 1) * (N - 2)) / 2
+    assert denom_betw != 0, "Grafo con insufficenti nodi"
+    
     centralities = {
-        'degree':  np.array(G.degree()),
-        'eigenvector': np.array(G.eigenvector_centrality()),
-        'closeness' : np.array(G.closeness()),
-        'betweenness' : np.array(G.betweenness()),
+        'degree':  np.array(G.degree()) / (N - 1),
+        'eigenvector': np.array(G.eigenvector_centrality(scale=True)),
+        'closeness' : np.array(G.closeness(normalized=True)),
+        'betweenness' : np.array(G.betweenness()) / denom_betw,
         'coreness' : np.array(G.coreness())
     }
 
@@ -45,6 +54,3 @@ def compute_ccdf(data: np.ndarray) -> tuple[np.ndarray,np.ndarray]:
     x_values = np.linspace(0,data.max(),5000)
     ccdf = np.array([np.sum(data>x) / N for x in x_values])
     return x_values, ccdf
-
-cmap = plt.get_cmap('tab10')
-color_group = {'A': cmap(0), 'B': cmap(3)}
