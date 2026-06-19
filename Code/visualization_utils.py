@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
 from matplotlib.patches import Patch
+from matplotlib.colors import to_rgb
 from pathlib import Path
 from scipy.interpolate import make_interp_spline
 
@@ -22,8 +23,9 @@ cmap = plt.get_cmap('tab10')
 color_group = {'A': cmap(0), 'B': cmap(3)}
 CMAP_HEAT = 'Blues'
 FIGSIZE = (6, 4)
-FIGSIZE_LARGE = (12, 10)
-
+FIGSIZE_LARGE = (15, 6)
+FONTSIZE_SUPTITLE = 18
+FONTSIZE_TITLE = 14
 # Mapping to core - periphery
 mappingCP = {
     'A_CORE': 'Core',
@@ -32,6 +34,10 @@ mappingCP = {
     'B_PERIPHERY': 'Periphery'
 }
 
+def lighten_color(color: str, amount: float = 0.65) -> tuple[float, float, float]:
+    
+    base = np.array(to_rgb(color))
+    return tuple(np.clip(1 - amount * (1 - base), 0, 1))
 
 # ------------------------------------------------------------
 # 2. Archi – struttura condivisa (LineCollection ottimizzata)
