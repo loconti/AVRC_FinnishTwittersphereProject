@@ -16,6 +16,7 @@ GRAPH_FILENAMES = [
     ]
 TOPIC = ['Climate', 'Economy','Education', 'Immigration', 'Social']
 YEARS = [2019]*5 + [2023]*5
+GROUP = ['A', 'B']
 def load_graph(filename: str="") -> ig.Graph:
     """loads the graph with IGRAPH
     filename: the path to graph
