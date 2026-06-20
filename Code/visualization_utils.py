@@ -20,7 +20,7 @@ layout = None
 coords = np.array(())
 
 cmap = plt.get_cmap('tab10')
-color_group = {'A': cmap(0), 'B': cmap(3)}
+color_group = {'A': cmap(3), 'B': cmap(0)}
 CMAP_HEAT = 'Blues'
 FIGSIZE = (6, 4)
 FIGSIZE_LARGE = (15, 6)
