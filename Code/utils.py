@@ -72,12 +72,6 @@ def load_all_centralities(G: ig.Graph, dumpfile: str="") -> dict:
 
     return centralities
 
-def compute_ccdf(data: np.ndarray) -> tuple[np.ndarray,np.ndarray]:
-    N = len(data)
-    x_values = np.linspace(0,data.max(),5000)
-    ccdf = np.array([np.sum(data>x) / N for x in x_values])
-    return x_values, ccdf
-
 def compute_ccdf(data: np.ndarray, xmin=1) -> tuple[np.ndarray,np.ndarray]:
     N = len(data)
 
