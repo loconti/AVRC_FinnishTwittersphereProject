@@ -95,6 +95,28 @@ def compute_ccdf(data: np.ndarray, xmin=1) -> tuple[np.ndarray,np.ndarray]:
     ccdf = np.array([np.sum(data>=x) / N for x in x_values])
     return x_values, ccdf
 
+def node_attr(G, attr, fallback="?"):
+    if attr in G.vertex_attributes():
+        return [v[attr] if v[attr] is not None else fallback for v in G.vs]
+    return [fallback] * G.vcount()
+
+
+
+def neighborhood_overlap(G, u, v):
+    neighbors_u = set(G.neighbors(u)) - {v}
+    neighbors_v = set(G.neighbors(v)) - {u}
+    common = neighbors_u & neighbors_v
+    union  = neighbors_u | neighbors_v
+    return len(common) / len(union) if union else 0.0
+
+def bridge_role(h_u, h_v):
+    is_core_u = 'CORE' in str(h_u)
+    is_core_v = 'CORE' in str(h_v)
+    cores = is_core_u + is_core_v
+    if cores == 2:   return 'Core–Core'
+    elif cores == 1: return 'Core–Periphery'
+    else:            return 'Periphery–Periphery'
+
 def ei_index(G: ig.Graph, attr_map) -> float:
     """Calcolo dell'EI-index data la partizione dei nodi in due gruppi
     """
