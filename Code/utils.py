@@ -3,6 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import make_interp_spline
 from pathlib import Path
+from visualization_utils import *
+import sys
 
 MAIN_DIR = Path(__file__).parent.parent
 
@@ -24,6 +26,19 @@ def load_graph(filename: str="") -> ig.Graph:
     if not filename:
         filename = DATA_DIR + DEFAULT_GRAPH
     return ig.Graph.Read_GraphML(filename)
+
+def barra_avanzamento(i, totale):
+    """Mostra la barra di avanzamento usando solo l'indice e il totale."""
+    lunghezza = 30
+    percentuale = int((i / totale) * 100)
+    blocchi = int((i / totale) * lunghezza)
+    
+    # Costruisce l'output grafico
+    barra = f"\r[{'#' * blocchi}{'-' * (lunghezza - blocchi)}] {percentuale}% ({i}/{totale})"
+    
+    # Aggiorna la riga nel terminale
+    sys.stdout.write(barra)
+    sys.stdout.flush()
 
 def network_statistics(G: ig.Graph) -> dict:
     """Calcola le metriche globali della rete e le stampa"""
@@ -126,3 +141,88 @@ def communities_statistics(G: ig.Graph):
 
 
     return n_A, n_B, p, q, 2*p*q
+
+def mixing_matrix(G: ig.Graph, 
+                  partition: np.ndarray | None = None, 
+                  normalized: bool = True):
+    '''Calcolo della matrice di mixing
+    Questa funzione calcola la matrice di mixing in base alla partizione in ingresso se c'è il parametro partition
+    Se Normalized=False, restituisce i conteggi degli archi, altrimenti il loro valore normalizzato per il numero totale di edges'''
+    
+    
+    edgelist = G.get_edgelist()
+
+    if partition is not None:
+        
+        q = 2
+        M = np.zeros((q, q))
+        labels = list(range(q))
+        for u, v in edgelist:
+            r, s = partition[u], partition[v]
+            M[r, s] += 1
+            if r != s:
+                M[s, r] += 1
+    
+    # calcolo la matrice di mixing usando la partizione di default definita dalle comunità A e B
+    else:
+        labels = sorted(set(G.vs['group'])) # [A, B]
+        label_idx = {l: i for i, l in enumerate(labels)} # {'A': 0, 'B': 1}
+        n = len(labels)
+        M = np.zeros((n, n))
+
+        for u, v in edgelist:
+            r = label_idx[G.vs[u]['group']]
+            s = label_idx[G.vs[v]['group']]
+            if r == s:
+                M[r, r] += 1
+            else:
+                M[r, s] += 1
+                M[s, r] += 1    
+    
+    if normalized:
+        M = M / (M[0, 0] + M[0, 1] + M[1, 1])
+
+    return M, labels
+
+
+def plot_mixing_matrix(G, M, labels, title=''):
+
+    
+    fig, ax = plt.subplots(figsize=(5, 4))
+
+    im = ax.imshow(M, cmap=CMAP_HEAT, vmin=0, vmax=M.max())
+    ax.set_xticks(range(len(labels)))
+    ax.set_yticks(range(len(labels)))
+    ax.set_xticklabels(GROUP, fontsize=13)
+    ax.set_yticklabels(GROUP, fontsize=13)
+    ax.set_xlabel('Gruppo', fontsize=12)
+    ax.set_ylabel('Gruppo', fontsize=12)
+    ax.set_title('Mixing matrix' + title)
+
+    for i in range(len(labels)):
+        for j in range(len(labels)):
+            ax.text(j, i, f'{M[i,j]:.3f}',
+                    ha='center', va='center',
+                    color='white' if M[i,j] > M.max()*0.6 else 'black',
+                    fontsize=10)
+
+    plt.colorbar(im, ax=ax, label='Frazione di archi')
+    plt.tight_layout()
+    plt.show()
+
+def cross_type_fraction(G: ig.Graph, attr_map):
+    '''Calcola la frazione di edge tra le comunità '''
+    cross = sum(1 for u, v in G.get_edgelist() if attr_map[u] != attr_map[v])
+    return cross / G.ecount()
+
+def subgraph_core(G: ig.Graph, K_core: int, plot=True):
+    '''Seleziona un sottografo di nodi di un certo K_core in input
+    plot=True stampa il sottografo'''
+    mask =  [k >= K_core for k in G.vs['coreness']]
+    subgraph_core = G.subgraph(np.arange(G.vcount())[mask])
+    #print(f"Il core ha k = {K_core} e contiene {subgraph_core.vcount()} nodi.")
+    if plot:
+        plot_group_AB(subgraph_core, save=False, only_periphery=False, niter=None)
+        plt.show()
+        
+    return subgraph_core    

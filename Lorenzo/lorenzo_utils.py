@@ -9,6 +9,7 @@ MAIN_DIR = Path(__file__).parent.parent
 DATA_DIR = str(MAIN_DIR / "Data") + '/'
 VISUAL_DIR = str(MAIN_DIR / "Visual") + '/'
 DEFAULT_GRAPH = "climate_19.graphml"
+GROUP = ['A', 'B']
 
 GRAPH_FILENAMES = [
     'climate_19.graphml', 'economy_19.graphml', 'education_19.graphml', 'immigration_19.graphml', 'social_19.graphml',
