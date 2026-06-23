@@ -140,7 +140,7 @@ def communities_statistics(G: ig.Graph):
     q = 1 - p
 
 
-    return n_A, n_B, p, q, 2*p*q
+    return n_A, n_B, p, q
 
 def mixing_matrix(G: ig.Graph, 
                   partition: np.ndarray | None = None, 
