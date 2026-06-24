@@ -81,44 +81,97 @@ d3.json("grafo.json").then(graph => {
         x: innerWidth / 2 + rad * Math.cos(ang(i)),
         y: innerHeight / 2 + rad * Math.sin(ang(i))
     }]));
-    
 
     let simulation; // verrà (ri)creata da updateGraph()
+    let topNodes = new Set();
+
+    let hoveredNode = null;
+    let simRunning = false;
+    let quadtree;
 
     // ricalcolo del raggio dopo il cambio metrica e filtraggio da coreness
     function updateRadiusScale() {
         const maxVal = d3.max(currentNodes, d => d[currentMetric] || 0) || 1;
         radiusScale.domain([0, maxVal]);
     }
+
+    function updateTopNodes(){
+        const sorted = [...currentNodes]
+            .sort((a, b) => (b[currentMetric] || 0) - (a[currentMetric] || 0))
+            .slice(0, 20);
+        topNodes = new Set(sorted.map(d => d.id))
+    }
+
     function draw() {
         ctx.save();
         ctx.clearRect(0, 0, width, height);
         ctx.translate(transform.x, transform.y);
         ctx.scale(transform.k, transform.k);
 
+        const neighborSet = geiNeighborSet(hoveredNode);
+        const isHovering = neighborSet.size > 0;
         // 1. Link
-        ctx.beginPath();
-        ctx.strokeStyle = "rgba(187, 187, 187, 0.05)";
-        ctx.lineWidth = 0.5 / transform.k; // mantiene lo spessore costante mentre zoomi
+
         currentLinks.forEach(d => {
+            const sid = d.source.id ?? d.source;
+            const tid = d.target.id ?? d.target;
+            const active = !isHovering || 
+            (neighborSet.has(sid) && neighborSet.has(tid));
+            ctx.beginPath();
+            ctx.strokeStyle = active
+            ? "rgba(187, 187, 187, 0.05)"
+            : "rgba(187, 187, 187, 0.0)";
+            ctx.lineWidth = 0.5 / transform.k; // mantiene lo spessore costante mentre zoomi
+
+
+
+
             ctx.moveTo(d.source.x, d.source.y);
             ctx.lineTo(d.target.x, d.target.y);
+            ctx.stroke();
         });
-        ctx.stroke();
 
         // 2. Nodi
         currentNodes.forEach(d => {
-            ctx.beginPath();
             const r = radiusScale(d[currentMetric] || 0);
+            const isTop = topNodes.has(d.id);
+            const isNeighbor = neighborSet.has(d.id);
+            const isHovered = hoveredNode && d.id === hoveredNode.id;
+            
+            ctx.beginPath();
             ctx.arc(d.x, d.y, r, 0, 2 * Math.PI);
+            ctx.globalAlpha = isHovering ? (isNeighbor ? 1 : 0.05) : 0.6;
             ctx.fillStyle = colorScale(d.group);
             ctx.fill();
+
+            if (isTop) {
+                ctx.globalAlpha = isHovering && !isNeighbor ? 0.05 : 1;
+                ctx.strokeStyle = '#FFD700';
+                ctx.lineWidth = ( isHovered ? 3 : 1.5 ) / transform.k;
+                ctx.arc(d.x, d.y, r, 0, 2 * Math.PI);
+                ctx.fillStyle = colorScale(d.group);
+                ctx.fill()
+            
+                ctx.stroke();
+            }
+
+            
         });
-        currentNodes.on("mouseenter", (e, d) => {
-            const focus = neighbors.get(d.id);
-            currentNodes.attr("opacity", n => focus.has(n.id) ? 1 : 0.1)
-        })
+
         ctx.restore();
+    }
+
+    function geiNeighborSet(node) {
+        if (!node || !topNodes.has(node.id)) return new Set();
+        const neighbors = new Set([node.id]);
+        currentLinks.forEach(l => {
+            const sid = l.source.id ?? l.source;
+            const tid = l.target.id ?? l.target;
+            if (sid === node.id) neighbors.add(tid);
+            if (tid === node.id) neighbors.add(sid);
+
+        });
+        return neighbors;
     }
 
     // Costruisce il sottografo dato un valore minimo di coreness,
@@ -137,6 +190,12 @@ d3.json("grafo.json").then(graph => {
 
         currentNodes = filteredNodes;
         currentLinks = filteredLinks;
+        updateTopNodes();
+
+        quadtree = d3.quadtree()
+            .x( d => d.x)
+            .y(d => d.y)
+            .addAll(currentNodes);
 
         const maxDegree = d3.max(graph.nodes, d => d.degree) || 1;
         const chargeScale = d3.scaleSqrt() // sqrt per non far esplodere troppo i pochi hub ad altissimo grado
@@ -156,6 +215,14 @@ d3.json("grafo.json").then(graph => {
             .on("end", () => console.log("Simulazione stabilizzata,", currentNodes.length, "nodi visibili"));
     }
 
+    d3.select("#centrality-select")
+        .on("change", function() {
+            currentMetric = this.value;
+            updateRadiusScale();
+            updateTopNodes();
+            draw();
+        });
+
     // Inizializza il range dello slider in base alla coreness massima reale nei dati
     const maxCoreness = d3.max(graph.nodes, d => d.coreness);
     d3.select("#coreness-slider")
@@ -165,14 +232,6 @@ d3.json("grafo.json").then(graph => {
             d3.select("#coreness-value").text(value);
             updateGraph(value);
         });
-
-    d3.select("#centrality-select")
-        .on("change", function() {
-            currentMetric = this.value;
-            updateRadiusScale();
-            draw();
-        });
-    
 
     // Primo disegno: grafo intero (coreness minima = 0)
     updateGraph(0);
@@ -186,6 +245,30 @@ d3.json("grafo.json").then(graph => {
                 draw();
             })
     );
+
+    canvas.addEventListener("mousemove", (event) => {
+        if (simRunning) return;
+        const [mx, my] = d3.pointer(event);
+        const x = (mx - transform.x) / transform.k;
+        const y = (my - transform.y) / transform.k;
+        const found = quadtree
+            ? quadtree.find(x, y, 20 / transform.k)
+            : null;
+        const target = found && topNodes.has(found.id) ? found : null;
+        if (target !== hoveredNode){
+            hoveredNode = target;
+            canvas.style.cursor = target ? "pointer" : "grab";
+            draw();
+        }    
+
+    });
+    canvas.addEventListener("mouseleave", () => {
+        if (hoveredNode) {
+            hoveredNode = null;
+            canvas.style.cursor = 'grab';
+            draw();
+        }
+    });
 });
 </script>
 </body>
