@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>Anteprima Grafo al variare della coreness</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+  body { margin: 0; background: #111; }
+  #demo-canvas { display: block; cursor: grab; }
+
+  #controls {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    background: rgba(20,20,20,0.85);
+    color: #eee;
+    font-family: sans-serif;
+    font-size: 13px;
+    padding: 10px 14px;
+    border-radius: 6px;
+    z-index: 10;
+  }
+  #controls label { display: block; margin-bottom: 4px; }
+  #coreness-value { font-weight: bold; }
+</style>
+</head>
+<body>
+
+<div id="controls">
+  <label>Coreness minima: <span id="coreness-value">0</span></label>
+  <input type="range" id="coreness-slider" min="0" max="0" value="0" step="1">
+
+  <label>Dimensione nodi in base a:</label>
+  <select id="centrality-select">
+    <option value="eigenvector">Eigenvector centrality</option>
+    <option value="degree">Degree centrality</option>
+    <option value="betweenness">Betweenness centrality</option>
+    <option value="closeness">Closeness centrality</option>
+    
+   </select>
+</div>
+
+<canvas id="demo-canvas"></canvas>
+
+<script>
+d3.json("grafo.json").then(graph => {
+
+    const canvas = d3.select("#demo-canvas").node();
+    const ctx = canvas.getContext("2d");
+
+    // Usa tutta la finestra, non una dimensione fissa piccola
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+
+    // Supporto schermi retina/HiDPI senza sfocature
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = width + "px";
+    canvas.style.height = height + "px";
+    ctx.scale(dpr, dpr);
+
+    // inizializziamo il raggio -> verrà poi aggiornato dopo in base alla metrica
+    const radiusScale = d3.scaleSqrt().range([1.5, 10]);
+    let currentMetric = "eigenvector";
+    const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
+
+    // Trasformazione corrente per zoom/pan
+    let transform = d3.zoomIdentity;
+
+    // Stato corrente del sottografo visualizzato (cambia col filtro coreness)
+    let currentNodes = graph.nodes;
+    let currentLinks = graph.links;
+
+    // Indice per lookup rapido nodo per id (serve per ricostruire i link filtrati)
+    const nodeById = new Map(graph.nodes.map(d => [d.id, d]));
+    const cks = [...new Set(currentNodes.map(d => d.group))]; // trova le community
+    const ang = i => (i / cks.length) * 2 * Math.PI;
+    const rad = 0.30 * Math.min(innerWidth, innerHeight);
+    const tgt = new Map(cks.map((cm, i) => [cm, {
+        x: innerWidth / 2 + rad * Math.cos(ang(i)),
+        y: innerHeight / 2 + rad * Math.sin(ang(i))
+    }]));
+    
+
+    let simulation; // verrà (ri)creata da updateGraph()
+
+    // ricalcolo del raggio dopo il cambio metrica e filtraggio da coreness
+    function updateRadiusScale() {
+        const maxVal = d3.max(currentNodes, d => d[currentMetric] || 0) || 1;
+        radiusScale.domain([0, maxVal]);
+    }
+    function draw() {
+        ctx.save();
+        ctx.clearRect(0, 0, width, height);
+        ctx.translate(transform.x, transform.y);
+        ctx.scale(transform.k, transform.k);
+
+        // 1. Link
+        ctx.beginPath();
+        ctx.strokeStyle = "rgba(187, 187, 187, 0.05)";
+        ctx.lineWidth = 0.5 / transform.k; // mantiene lo spessore costante mentre zoomi
+        currentLinks.forEach(d => {
+            ctx.moveTo(d.source.x, d.source.y);
+            ctx.lineTo(d.target.x, d.target.y);
+        });
+        ctx.stroke();
+
+        // 2. Nodi
+        currentNodes.forEach(d => {
+            ctx.beginPath();
+            const r = radiusScale(d[currentMetric] || 0);
+            ctx.arc(d.x, d.y, r, 0, 2 * Math.PI);
+            ctx.fillStyle = colorScale(d.group);
+            ctx.fill();
+        });
+        currentNodes.on("mouseenter", (e, d) => {
+            const focus = neighbors.get(d.id);
+            currentNodes.attr("opacity", n => focus.has(n.id) ? 1 : 0.1)
+        })
+        ctx.restore();
+    }
+
+    // Costruisce il sottografo dato un valore minimo di coreness,
+    // e (ri)avvia la simulazione solo su quel sottoinsieme.
+    function updateGraph(minCoreness) {
+        const filteredNodes = graph.nodes.filter(d => d.coreness >= minCoreness);
+        const visibleIds = new Set(filteredNodes.map(d => d.id));
+
+        // NB: dopo che forceLink ha girato una volta, source/target sui link
+        // diventano OGGETTI nodo (non più stringhe id). Gestiamo entrambi i casi.
+        const filteredLinks = graph.links.filter(l => {
+            const sourceId = typeof l.source === "object" ? l.source.id : l.source;
+            const targetId = typeof l.target === "object" ? l.target.id : l.target;
+            return visibleIds.has(sourceId) && visibleIds.has(targetId);
+        });
+
+        currentNodes = filteredNodes;
+        currentLinks = filteredLinks;
+
+        const maxDegree = d3.max(graph.nodes, d => d.degree) || 1;
+        const chargeScale = d3.scaleSqrt() // sqrt per non far esplodere troppo i pochi hub ad altissimo grado
+        .domain([1, maxDegree])
+        .range([-5, -40]); // periferia: -5 (debole) | core: -40 (forte) — calibra questi due numeri sul tuo grafo
+        if (simulation) simulation.stop();
+        // simulazione del grafo
+        simulation = d3.forceSimulation(currentNodes)
+            .force("link", d3.forceLink(currentLinks).id(d => d.id).distance(2).strength(0.3))
+            .force("charge", d3.forceManyBody().strength(d => chargeScale(d.degree)).theta(0.9))
+            .force("center", d3.forceCenter(width / 2, height / 2))
+            .force("xCluster", d3.forceX(d => tgt.get(d.group).x).strength(0.08))
+            .force("yCluster", d3.forceY(d => tgt.get(d.group).y).strength(0.08))
+            .alphaDecay(0.05)
+            .velocityDecay(0.4)
+            .on("tick", draw)
+            .on("end", () => console.log("Simulazione stabilizzata,", currentNodes.length, "nodi visibili"));
+    }
+
+    // Inizializza il range dello slider in base alla coreness massima reale nei dati
+    const maxCoreness = d3.max(graph.nodes, d => d.coreness);
+    d3.select("#coreness-slider")
+        .attr("max", maxCoreness)
+        .on("input", function() {
+            const value = +this.value;
+            d3.select("#coreness-value").text(value);
+            updateGraph(value);
+        });
+
+    d3.select("#centrality-select")
+        .on("change", function() {
+            currentMetric = this.value;
+            updateRadiusScale();
+            draw();
+        });
+    
+
+    // Primo disegno: grafo intero (coreness minima = 0)
+    updateGraph(0);
+
+    // Zoom e pan: indispensabile con 9000 nodi
+    d3.select(canvas).call(
+        d3.zoom()
+            .scaleExtent([0.05, 10])
+            .on("zoom", (event) => {
+                transform = event.transform;
+                draw();
+            })
+    );
+});
+</script>
+</body>
+</html>
