@@ -11,7 +11,7 @@ def satisfaction(node: int, neighbors: list, labels: tuple) -> float:
     return sum([labels[n] == labels[node] for n in neighbors]) / len(neighbors) 
 
 def segregation_step(G: ig.Graph, node: int, labels: tuple=None, nodes=None) -> int:
-    """Updates the graph with a step of the segragation model
+    """Updates the graph with a step of the segragation model, per un singolo nodo
     Return: the number of links changed"""
     if labels is None:
         labels = tuple(G.vs['group'])
