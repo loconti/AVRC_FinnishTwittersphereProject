@@ -1,10 +1,12 @@
 import igraph as ig
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.interpolate import make_interp_spline
 from pathlib import Path
-from visualization_utils import *
 import sys
+
+from visualization_utils import *
 
 MAIN_DIR = Path(__file__).parent.parent
 
@@ -95,27 +97,61 @@ def compute_ccdf(data: np.ndarray, xmin=1) -> tuple[np.ndarray,np.ndarray]:
     ccdf = np.array([np.sum(data>=x) / N for x in x_values])
     return x_values, ccdf
 
-def node_attr(G, attr, fallback="?"):
-    if attr in G.vertex_attributes():
-        return [v[attr] if v[attr] is not None else fallback for v in G.vs]
-    return [fallback] * G.vcount()
-
-
-
 def neighborhood_overlap(G, u, v):
     neighbors_u = set(G.neighbors(u)) - {v}
     neighbors_v = set(G.neighbors(v)) - {u}
-    common = neighbors_u & neighbors_v
-    union  = neighbors_u | neighbors_v
+    common = neighbors_u & neighbors_v  # intersect
+    union  = neighbors_u | neighbors_v  # union
     return len(common) / len(union) if union else 0.0
 
-def bridge_role(h_u, h_v):
-    is_core_u = 'CORE' in str(h_u)
-    is_core_v = 'CORE' in str(h_v)
-    cores = is_core_u + is_core_v
-    if cores == 2:   return 'Core–Core'
-    elif cores == 1: return 'Core–Periphery'
-    else:            return 'Periphery–Periphery'
+def make_edges_df(G: ig.Graph) -> pd.DataFrame:
+    """Dataframe of edges, classificati come bridge o internal
+    overlap == 0 definisce i local bridge
+    """
+    rows = []
+    for edge in G.es:
+        u = edge.source
+        v = edge.target
+        g_u = G.vs['group'][u]
+        g_v = G.vs['group'][v]
+
+        overlap = neighborhood_overlap(G, u, v)
+        rows.append({
+            "node_u"         : u,
+            "node_v"         : v,
+            "id_u"           : G.vs["id"][u],
+            "id_v"           : G.vs["id"][v],
+            "group_u"        : g_u,
+            "group_v"        : g_v,  
+            "edge_type"      : "bridge" if g_u != g_v else "internal",
+            "overlap"        : overlap
+        })
+
+    return pd.DataFrame(rows)
+
+def make_bridges_df(G_A: ig.Graph, G_B:ig.Graph,edges_df: pd.DataFrame, eig_bin_A, eig_bin_B) -> pd.DataFrame:
+    """Dataframe of bridges, Gli estremi sono indicati come node_A e node_B"""
+    bridge_df = edges_df[edges_df['edge_type'] == 'bridge']
+    bridge_df['node_A'] = None
+    bridge_df['node_B'] = None
+    bridge_df['eig_A'] = None
+    bridge_df['eig_B'] = None
+    nodes_disconnected = 0
+
+    for idx, row in bridge_df.iterrows():
+        bridge_df.at[idx, 'node_A'], bridge_df.at[idx, 'node_B'] = (row['node_u'], row['node_v']) if row['group_u'] == 'A' else (row['node_v'], row['node_u'])
+        id_A, id_B = (row['id_u'], row['id_v']) if row['group_u'] == 'A' else (row['id_v'], row['id_u'])
+        # rimuovi i bridge che non sono nella componente connessa di A o B
+        if id_A in G_A.vs['id'] and id_B in G_B.vs['id']:
+            eig_A, eig_B = G_A.vs.select(id_eq=id_A)['eigenvector'][0], G_B.vs.select(id_eq=id_B)['eigenvector'][0]
+            bridge_df.at[idx, 'eig_A'], bridge_df.at[idx, 'eig_B'] = eig_bin_A(eig_A), eig_bin_B(eig_B)
+        else:
+            nodes_disconnected += 1
+    bridge_df.dropna(inplace=True)
+    print('disconnectd', nodes_disconnected)
+    bridge_df.drop(['node_u', 'node_v', 'group_u', 'group_v', 'id_u', 'id_v', 'edge_type'], axis=1, inplace=True)
+
+    return bridge_df
 
 def ei_index(G: ig.Graph, attr_map) -> float:
     """Calcolo dell'EI-index data la partizione dei nodi in due gruppi
@@ -140,7 +176,7 @@ def communities_statistics(G: ig.Graph):
     q = 1 - p
 
 
-    return n_A, n_B, p, q, 2*p*q
+    return n_A, n_B, p, q
 
 def mixing_matrix(G: ig.Graph, 
                   partition: np.ndarray | None = None, 
