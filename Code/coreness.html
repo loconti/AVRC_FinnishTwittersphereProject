@@ -55,13 +55,13 @@
 <script>
 function loadGraph(filename){  
 
-    // 👇 PULISCI LO STATO PRECEDENTE
+    // puliamo lo stato precedente
     if (typeof window.currentSimulation !== 'undefined' && window.currentSimulation) {
     window.currentSimulation.stop();
     }
     const canvas = d3.select("#demo-canvas").node();
     
-    // ⭐ QUESTO E' IL FIX: rimuovi i vecchi listener prima di aggiungerne di nuovi
+    // rimozione dei vecchi listener prima di aggiungerne di nuovi
     const newCanvas = canvas.cloneNode(false);
     canvas.parentNode.replaceChild(newCanvas, canvas);
 
@@ -74,11 +74,11 @@ function loadGraph(filename){
         const canvas = d3.select("#demo-canvas").node();
         const ctx = canvas.getContext("2d");
 
-        // Usa tutta la finestra, non una dimensione fissa piccola
+        // usiamo tutta la finestra
         const width = window.innerWidth;
         const height = window.innerHeight;
 
-        // Supporto schermi retina/HiDPI senza sfocature
+        
         const dpr = window.devicePixelRatio || 1;
         canvas.width = width * dpr;
         canvas.height = height * dpr;
@@ -100,15 +100,16 @@ function loadGraph(filename){
 
         // Indice per lookup rapido nodo per id (serve per ricostruire i link filtrati)
         const nodeById = new Map(graph.nodes.map(d => [d.id, d]));
+
         const cks = [...new Set(currentNodes.map(d => d.group))]; // trova le community
-        const ang = i => (i / cks.length) * 2 * Math.PI;
-        const rad = 0.30 * Math.min(innerWidth, innerHeight);
-        const tgt = new Map(cks.map((cm, i) => [cm, {
+        const ang = i => (i / cks.length) * 2 * Math.PI; // divido la circonferenza in base alla comunità
+        const rad = 0.30 * Math.min(innerWidth, innerHeight); // raggio della circonferenza su cui posiziono le comunità
+        const tgt = new Map(cks.map((cm, i) => [cm, { // coordinate del punto sulla circonferenza associate alla comunità
             x: innerWidth / 2 + rad * Math.cos(ang(i)),
             y: innerHeight / 2 + rad * Math.sin(ang(i))
         }]));
 
-        let simulation; // verrà (ri)creata da updateGraph()
+        let simulation; 
         let topNodes = new Set();
         let topNodesCount = 20;
 
@@ -116,18 +117,20 @@ function loadGraph(filename){
         let simRunning = false;
         let quadtree;
 
-        // ricalcolo del raggio dopo il cambio metrica e filtraggio da coreness
+        // ricalcolo del raggio dei Nodi dopo il cambio metrica e filtraggio da coreness
         function updateRadiusScale() {
             const maxVal = d3.max(currentNodes, d => d[currentMetric] || 0) || 1;
             radiusScale.domain([0, maxVal]);
         }
 
-        function updateTopNodes(){
+        function updateTopNodes(){ 
             const sorted = [...currentNodes]
-                .sort((a, b) => (b[currentMetric] || 0) - (a[currentMetric] || 0))
-                .slice(0, topNodesCount);
+                .sort((a, b) => (b[currentMetric] || 0) - (a[currentMetric] || 0)) // riordina i nodi dal piu grande al piu piccolo
+                .slice(0, topNodesCount); // seleziona i top nodi 
             topNodes = new Set(sorted.map(d => d.id))
         }
+
+        
 
         function draw() {
             ctx.save();
@@ -165,7 +168,7 @@ function loadGraph(filename){
                 // disegno prima i non top nodi
                 if (topNodes.has(d.id)) return; // salta i top nodi
                 
-                const r = radiusScale(d[currentMetric] || 0);
+                const r = (radiusScale(d[currentMetric] || 0)) / transform.k;
                 
                 const isNeighbor = neighborSet.has(d.id);
                 //const isHovered = hoveredNode && d.id === hoveredNode.id;
@@ -182,7 +185,7 @@ function loadGraph(filename){
             // ora disegnamo i top nodi
             currentNodes.forEach(d => {
                 if (!topNodes.has(d.id)) return; 
-                const r = radiusScale(d[currentMetric] || 0);
+                const r = (radiusScale(d[currentMetric] || 0)) / transform.k;
                 const isNeighbor = neighborSet.has(d.id);
                 const isHovered = hoveredNode && d.id === hoveredNode.id;
                 
@@ -218,7 +221,7 @@ function loadGraph(filename){
             });
             return neighbors;
         }
-
+        
         // Costruisce il sottografo dato un valore minimo di coreness,
         // e (ri)avvia la simulazione solo su quel sottoinsieme.
         function updateGraph(minCoreness) {
@@ -253,6 +256,27 @@ function loadGraph(filename){
             .domain([1, maxDegree])
             .range([-5, -40]); // periferia: -5 (debole) | core: -40 (forte) 
             if (simulation) simulation.stop();
+
+            //  DE_ZOOM INIZIALE 
+            const targetPositions = Array.from(tgt.values());
+            const bounds = {
+                minX: Math.min(...targetPositions.map(p => p.x)),
+                maxX: Math.max(...targetPositions.map(p => p.x)),
+                minY: Math.min(...targetPositions.map(p => p.y)),
+                maxY: Math.max(...targetPositions.map(p => p.y))
+            };
+    
+            const graphWidth = bounds.maxX - bounds.minX;
+            const graphHeight = bounds.maxY - bounds.minY;
+            const scale = Math.min(width / (graphWidth + 80), height / (graphHeight + 80), 0.4);
+            const centerX = (bounds.minX + bounds.maxX) / 2;
+            const centerY = (bounds.minY + bounds.maxY) / 2;
+            
+            transform = d3.zoomIdentity
+            .translate(width / 2, height / 2)
+            .scale(scale)
+            .translate(-centerX, -centerY);
+            
             // simulazione del grafo
             simulation = d3.forceSimulation(currentNodes)
                 .force("link", d3.forceLink(currentLinks).id(d => d.id).distance(2).strength(0.3))
@@ -297,7 +321,7 @@ function loadGraph(filename){
         // Primo disegno: grafo intero (coreness minima = 0)
         updateGraph(0);
 
-        // Zoom e pan: indispensabile con 9000 nodi
+        // Zoom e pan
         d3.select(canvas).call(
             d3.zoom()
                 .scaleExtent([0.05, 10])
