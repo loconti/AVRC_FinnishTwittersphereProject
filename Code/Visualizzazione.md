@@ -1,10 +1,9 @@
 # Visualizzazione
-Questa visualizzazione è stata pensata per mostrare le proprietà 
+Questa visualizzazione è stata pensata per visulizzare diversi fenomeni che sono emersi nella nostra analisi.
 
 Innanzitutto abbiamo permesso la visualizzazione di due reti: una che riguarda il topic immigrazione nell'anno 19 e una nell'anno 2023. Mettendo di default la rete che abbiamo selezionato per l'analisi, ovvero quella del 2023.La scleta avviene tramite un menù a tendina.
 
 ```js
-
 <label>Seleziona anno:</label>
     <select id="graph-select">
         <option value="grafo.json">2023</option> // file json contenente i dati della rete immigrazione 2023
