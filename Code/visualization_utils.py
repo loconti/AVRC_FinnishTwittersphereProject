@@ -23,8 +23,9 @@ cmap = plt.get_cmap('tab10')
 color_group = {'A': cmap(3), 'B': cmap(0)}
 CMAP_HEAT = 'Blues'
 
-FIGSIZE_LARGE = (15, 6)
-FIGSIZE = (10, 6)
+FIGSIZE_LARGE = (15, 6) # subplts(1, 2)
+FIGSIZE_4 = (15, 9) #subplots(2,2)
+FIGSIZE = (10, 6) #subplots()
 
 FONTSIZE_SUPTITLE = 18
 FONTSIZE_TITLE = 14
