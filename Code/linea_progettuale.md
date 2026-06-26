@@ -26,3 +26,7 @@ Domanda: Quantificare la distinzione delle comunità e come aumenta nel tempo.
 - Partiamo da Configuration Model random, per capire come le scelte locali dei singoli nodi influenzano la struttura comunitaria globale
 
 Domanda: Come viene riprodotta la polarizzazione osservata attraverso modello generativo di Shelling 
+
+```js
+const a =1;
+```
