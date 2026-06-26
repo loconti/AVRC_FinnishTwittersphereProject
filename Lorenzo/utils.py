@@ -1,0 +1,264 @@
+import igraph as ig
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from scipy.interpolate import make_interp_spline
+from pathlib import Path
+import sys
+
+from visualization_utils import *
+
+MAIN_DIR = Path(__file__).parent.parent
+
+DATA_DIR = str(MAIN_DIR / "Data") + '/'
+VISUAL_DIR = str(MAIN_DIR / "Visual") + '/'
+DEFAULT_GRAPH = "climate_19.graphml"
+
+GRAPH_FILENAMES = [
+    'climate_19.graphml', 'economy_19.graphml', 'education_19.graphml', 'immigration_19.graphml', 'social_19.graphml',
+    'climate_23.graphml', 'economy_23.graphml', 'education_23.graphml', 'immigration_23.graphml', 'social_23.graphml'
+    ]
+TOPIC = ['Climate', 'Economy','Education', 'Immigration', 'Social']
+YEARS = [2019]*5 + [2023]*5
+GROUP = ['A', 'B']
+def load_graph(filename: str="") -> ig.Graph:
+    """loads the graph with IGRAPH
+    filename: the path to graph
+    """
+    if not filename:
+        filename = DATA_DIR + DEFAULT_GRAPH
+    return ig.Graph.Read_GraphML(filename)
+
+def barra_avanzamento(i, totale):
+    """Mostra la barra di avanzamento usando solo l'indice e il totale."""
+    lunghezza = 30
+    percentuale = int((i / totale) * 100)
+    blocchi = int((i / totale) * lunghezza)
+    
+    # Costruisce l'output grafico
+    barra = f"\r[{'#' * blocchi}{'-' * (lunghezza - blocchi)}] {percentuale}% ({i}/{totale})"
+    
+    # Aggiorna la riga nel terminale
+    sys.stdout.write(barra)
+    sys.stdout.flush()
+
+def network_statistics(G: ig.Graph) -> dict:
+    """Calcola le metriche globali della rete e le stampa"""
+    N = G.vcount()
+    L = G.ecount()
+    rho = G.density()
+    avg_degree = 2 * L / N
+    avg_clustering = G.transitivity_avglocal_undirected() # coefficiente di clustering medio
+    diametro = G.diameter() # diametro del grafo
+    apl = G.average_path_length(directed=False) # cammino medio
+
+    stat = {
+        "Numero di Nodi": N,
+        "Numero di Archi": L,
+        "Densità del Grafo": rho,
+        "Grado Medio": avg_degree,
+        "Clustering Medio": avg_clustering,
+        "Diametro": diametro, 
+        "Cammino Medio": apl
+    }
+    return stat
+
+
+def load_all_centralities(G: ig.Graph, dumpfile: str="") -> dict:
+    """calcola le misure di centralità normalizzate e le carica come labels nel grafo
+    dumpfile: Se presente viene generato un nuovo file graphml con il grafo aggiornato
+    Return: Il dizionario delle centralità calcolate
+    """
+    N = G.vcount()
+    
+    denom_betw = ((N - 1) * (N - 2)) / 2
+    assert denom_betw != 0, "Grafo con insufficenti nodi"
+    
+    centralities = {
+        'degree':  np.array(G.degree()),
+        'eigenvector': np.array(G.eigenvector_centrality(scale=True)),
+        'closeness' : np.array(G.closeness(normalized=True)),
+        'betweenness' : np.array(G.betweenness()) / denom_betw,
+        'coreness' : np.array(G.coreness())
+    }
+
+    for cent in centralities:
+        G.vs[cent] = centralities[cent]
+
+    if dumpfile:
+        G.write_graphml(dumpfile)
+
+    return centralities
+
+def compute_ccdf(data: np.ndarray, xmin=1) -> tuple[np.ndarray,np.ndarray]:
+    N = len(data)
+
+    x_values = np.linspace(xmin,data.max(),5000)
+    ccdf = np.array([np.sum(data>=x) / N for x in x_values])
+    return x_values, ccdf
+
+def neighborhood_overlap(G, u, v):
+    neighbors_u = set(G.neighbors(u)) - {v}
+    neighbors_v = set(G.neighbors(v)) - {u}
+    common = neighbors_u & neighbors_v  # intersect
+    union  = neighbors_u | neighbors_v  # union
+    return len(common) / len(union) if union else 0.0
+
+def make_edges_df(G: ig.Graph) -> pd.DataFrame:
+    """Dataframe of edges, classificati come bridge o internal
+    overlap == 0 definisce i local bridge
+    """
+    rows = []
+    for edge in G.es:
+        u = edge.source
+        v = edge.target
+        g_u = G.vs['group'][u]
+        g_v = G.vs['group'][v]
+
+        overlap = neighborhood_overlap(G, u, v)
+        rows.append({
+            "node_u"         : u,
+            "node_v"         : v,
+            "id_u"           : G.vs["id"][u],
+            "id_v"           : G.vs["id"][v],
+            "group_u"        : g_u,
+            "group_v"        : g_v,  
+            "edge_type"      : "bridge" if g_u != g_v else "internal",
+            "overlap"        : overlap
+        })
+
+    return pd.DataFrame(rows)
+
+def make_bridges_df(G_A: ig.Graph, G_B:ig.Graph,edges_df: pd.DataFrame, eig_bin_A, eig_bin_B) -> pd.DataFrame:
+    """Dataframe of bridges, Gli estremi sono indicati come node_A e node_B"""
+    bridge_df = edges_df[edges_df['edge_type'] == 'bridge']
+    bridge_df['node_A'] = None
+    bridge_df['node_B'] = None
+    bridge_df['eig_A'] = None
+    bridge_df['eig_B'] = None
+    nodes_disconnected = 0
+
+    for idx, row in bridge_df.iterrows():
+        bridge_df.at[idx, 'node_A'], bridge_df.at[idx, 'node_B'] = (row['node_u'], row['node_v']) if row['group_u'] == 'A' else (row['node_v'], row['node_u'])
+        id_A, id_B = (row['id_u'], row['id_v']) if row['group_u'] == 'A' else (row['id_v'], row['id_u'])
+        # rimuovi i bridge che non sono nella componente connessa di A o B
+        if id_A in G_A.vs['id'] and id_B in G_B.vs['id']:
+            eig_A, eig_B = G_A.vs.select(id_eq=id_A)['eigenvector'][0], G_B.vs.select(id_eq=id_B)['eigenvector'][0]
+            bridge_df.at[idx, 'eig_A'], bridge_df.at[idx, 'eig_B'] = eig_bin_A(eig_A), eig_bin_B(eig_B)
+        else:
+            nodes_disconnected += 1
+    bridge_df.dropna(inplace=True)
+    print('disconnectd', nodes_disconnected)
+    bridge_df.drop(['node_u', 'node_v', 'group_u', 'group_v', 'id_u', 'id_v', 'edge_type'], axis=1, inplace=True)
+
+    return bridge_df
+
+def ei_index(G: ig.Graph, attr_map) -> float:
+    """Calcolo dell'EI-index data la partizione dei nodi in due gruppi
+    """
+    edge_type = [attr_map[u] == attr_map[v] for u, v in G.get_edgelist()]
+    I = sum(edge_type)
+    E = sum(map(lambda x: not x, edge_type))
+
+
+    return (E - I)/(E + I)
+
+def communities_statistics(G: ig.Graph):
+    """Return: - il numero di nodi per la comunità A e B
+               - la probabilità che un nodo appartenga ad A
+               - la probabilità che un nodo appartenga a B
+               - 2pq"""
+    n = G.vcount()
+    n_A = len(G.vs.select(group="A"))
+    n_B = len(G.vs.select(group="B"))
+
+    p = n_A / n
+    q = 1 - p
+
+
+    return n_A, n_B, p, q
+
+def mixing_matrix(G: ig.Graph, 
+                  partition: np.ndarray | None = None, 
+                  normalized: bool = True):
+    '''Calcolo della matrice di mixing
+    Questa funzione calcola la matrice di mixing in base alla partizione in ingresso se c'è il parametro partition
+    Se Normalized=False, restituisce i conteggi degli archi, altrimenti il loro valore normalizzato per il numero totale di edges'''
+    
+    
+    edgelist = G.get_edgelist()
+
+    if partition is not None:
+        
+        q = 2
+        M = np.zeros((q, q))
+        labels = list(range(q))
+        for u, v in edgelist:
+            r, s = partition[u], partition[v]
+            M[r, s] += 1
+            if r != s:
+                M[s, r] += 1
+    
+    # calcolo la matrice di mixing usando la partizione di default definita dalle comunità A e B
+    else:
+        labels = sorted(set(G.vs['group'])) # [A, B]
+        label_idx = {l: i for i, l in enumerate(labels)} # {'A': 0, 'B': 1}
+        n = len(labels)
+        M = np.zeros((n, n))
+
+        for u, v in edgelist:
+            r = label_idx[G.vs[u]['group']]
+            s = label_idx[G.vs[v]['group']]
+            if r == s:
+                M[r, r] += 1
+            else:
+                M[r, s] += 1
+                M[s, r] += 1    
+    
+    if normalized:
+        M = M / (M[0, 0] + M[0, 1] + M[1, 1])
+
+    return M, labels
+
+
+def plot_mixing_matrix(G, M, labels, title=''):
+
+    
+    fig, ax = plt.subplots(figsize=(5, 4))
+
+    im = ax.imshow(M, cmap=CMAP_HEAT, vmin=0, vmax=M.max())
+    ax.set_xticks(range(len(labels)))
+    ax.set_yticks(range(len(labels)))
+    ax.set_xticklabels(GROUP, fontsize=13)
+    ax.set_yticklabels(GROUP, fontsize=13)
+    ax.set_xlabel('Gruppo', fontsize=12)
+    ax.set_ylabel('Gruppo', fontsize=12)
+    ax.set_title('Mixing matrix' + title)
+
+    for i in range(len(labels)):
+        for j in range(len(labels)):
+            ax.text(j, i, f'{M[i,j]:.3f}',
+                    ha='center', va='center',
+                    color='white' if M[i,j] > M.max()*0.6 else 'black',
+                    fontsize=10)
+
+    plt.colorbar(im, ax=ax, label='Frazione di archi')
+    plt.tight_layout()
+    plt.show()
+
+def cross_type_fraction(G: ig.Graph, attr_map):
+    '''Calcola la frazione di edge tra le comunità '''
+    cross = sum(1 for u, v in G.get_edgelist() if attr_map[u] != attr_map[v])
+    return cross / G.ecount()
+
+def subgraph_core(G: ig.Graph, K_core: int, plot=True):
+    '''Seleziona un sottografo di nodi di un certo K_core in input
+    plot=True stampa il sottografo'''
+    mask =  [k >= K_core for k in G.vs['coreness']]
+    subgraph_core = G.subgraph(np.arange(G.vcount())[mask])
+    #print(f"Il core ha k = {K_core} e contiene {subgraph_core.vcount()} nodi.")
+    if plot:
+        plot_group_AB(subgraph_core, save=False, only_periphery=False, niter=None)
+        plt.show()
+        
+    return subgraph_core    
