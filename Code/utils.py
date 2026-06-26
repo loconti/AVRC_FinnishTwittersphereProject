@@ -21,9 +21,10 @@ GRAPH_FILENAMES = [
 TOPIC = ['Climate', 'Economy','Education', 'Immigration', 'Social']
 YEARS = [2019]*5 + [2023]*5
 GROUP = ['A', 'B']
+
 def load_graph(filename: str="") -> ig.Graph:
-    """loads the graph with IGRAPH
-    filename: the path to graph
+    """ Carica il grafo con igraph
+    filename: path 
     """
     if not filename:
         filename = DATA_DIR + DEFAULT_GRAPH
@@ -91,13 +92,18 @@ def load_all_centralities(G: ig.Graph, dumpfile: str="") -> dict:
     return centralities
 
 def compute_ccdf(data: np.ndarray, xmin=1) -> tuple[np.ndarray,np.ndarray]:
+    '''Calcola la complementary cumulative function 
+    data: array numpy dei dati
+    xmin: valore minimo da cui iniziamo a calcolare la ccdf
+    return: valori di x, ccdf'''
     N = len(data)
 
-    x_values = np.linspace(xmin,data.max(),5000)
+    x_values = np.linspace(xmin, data.max(), 5000)
     ccdf = np.array([np.sum(data>=x) / N for x in x_values])
     return x_values, ccdf
 
-def neighborhood_overlap(G, u, v):
+def neighborhood_overlap(G, u, v) -> float:
+    '''Calcola il neigborhood overlap tra due nodi u e v'''
     neighbors_u = set(G.neighbors(u)) - {v}
     neighbors_v = set(G.neighbors(v)) - {u}
     common = neighbors_u & neighbors_v  # intersect
@@ -105,7 +111,7 @@ def neighborhood_overlap(G, u, v):
     return len(common) / len(union) if union else 0.0
 
 def make_edges_df(G: ig.Graph) -> pd.DataFrame:
-    """Dataframe of edges, classificati come bridge o internal
+    """Dataframe degli edges, classificati come bridge o internal
     overlap == 0 definisce i local bridge
     """
     rows = []
@@ -129,29 +135,6 @@ def make_edges_df(G: ig.Graph) -> pd.DataFrame:
 
     return pd.DataFrame(rows)
 
-def make_bridges_df(G_A: ig.Graph, G_B:ig.Graph,edges_df: pd.DataFrame, eig_bin_A, eig_bin_B) -> pd.DataFrame:
-    """Dataframe of bridges, Gli estremi sono indicati come node_A e node_B"""
-    bridge_df = edges_df[edges_df['edge_type'] == 'bridge']
-    bridge_df['node_A'] = None
-    bridge_df['node_B'] = None
-    bridge_df['eig_A'] = None
-    bridge_df['eig_B'] = None
-    nodes_disconnected = 0
-
-    for idx, row in bridge_df.iterrows():
-        bridge_df.at[idx, 'node_A'], bridge_df.at[idx, 'node_B'] = (row['node_u'], row['node_v']) if row['group_u'] == 'A' else (row['node_v'], row['node_u'])
-        id_A, id_B = (row['id_u'], row['id_v']) if row['group_u'] == 'A' else (row['id_v'], row['id_u'])
-        # rimuovi i bridge che non sono nella componente connessa di A o B
-        if id_A in G_A.vs['id'] and id_B in G_B.vs['id']:
-            eig_A, eig_B = G_A.vs.select(id_eq=id_A)['eigenvector'][0], G_B.vs.select(id_eq=id_B)['eigenvector'][0]
-            bridge_df.at[idx, 'eig_A'], bridge_df.at[idx, 'eig_B'] = eig_bin_A(eig_A), eig_bin_B(eig_B)
-        else:
-            nodes_disconnected += 1
-    bridge_df.dropna(inplace=True)
-    print('disconnectd', nodes_disconnected)
-    bridge_df.drop(['node_u', 'node_v', 'group_u', 'group_v', 'id_u', 'id_v', 'edge_type'], axis=1, inplace=True)
-
-    return bridge_df
 
 def ei_index(G: ig.Graph, attr_map) -> float:
     """Calcolo dell'EI-index data la partizione dei nodi in due gruppi
@@ -182,7 +165,8 @@ def mixing_matrix(G: ig.Graph,
                   partition: np.ndarray | None = None, 
                   normalized: bool = True):
     '''Calcolo della matrice di mixing
-    Questa funzione calcola la matrice di mixing in base alla partizione in ingresso se c'è il parametro partition
+    Questa funzione calcola la matrice di mixing in base alla partizione (partition) in ingresso 
+    Se partition=False calcola in automatico la partizione della rete in base alla divisione in comunità originale
     Se Normalized=False, restituisce i conteggi degli archi, altrimenti il loro valore normalizzato per il numero totale di edges'''
     
     
@@ -221,8 +205,10 @@ def mixing_matrix(G: ig.Graph,
     return M, labels
 
 
-def plot_mixing_matrix(G, M, labels, title=''):
-
+def plot_mixing_matrix(M, labels, title=''):
+    ''' Stampa la matrice di mixing
+    M: mixing matrix
+    labels: etichette dei gruppi '''
     
     fig, ax = plt.subplots(figsize=(5, 4))
 
@@ -246,14 +232,14 @@ def plot_mixing_matrix(G, M, labels, title=''):
     plt.tight_layout()
     plt.show()
 
-def cross_type_fraction(G: ig.Graph, attr_map):
-    '''Calcola la frazione di edge tra le comunità '''
+def cross_type_fraction(G: ig.Graph, attr_map) -> float:
+    '''Calcola la frazione di edge tra le comunità data una partizione (attr_map)'''
     cross = sum(1 for u, v in G.get_edgelist() if attr_map[u] != attr_map[v])
     return cross / G.ecount()
 
-def subgraph_core(G: ig.Graph, K_core: int, plot=True):
-    '''Seleziona un sottografo di nodi di un certo K_core in input
-    plot=True stampa il sottografo'''
+def subgraph_core(G: ig.Graph, K_core: int, plot=True) -> ig.Graph:
+    '''Genera un sottografo con nodi con k>K_core
+    plot=True: stampa il sottografo'''
     mask =  [k >= K_core for k in G.vs['coreness']]
     subgraph_core = G.subgraph(np.arange(G.vcount())[mask])
     #print(f"Il core ha k = {K_core} e contiene {subgraph_core.vcount()} nodi.")
