@@ -38,7 +38,7 @@ simulation = d3.forceSimulation(currentNodes)
 
 
 ## Layout dei nodi
-Abbiamo evidenziato (mediante il bordo dorato) i top nodi delle diverse centralità tramite uno slider che può essere variato da 10 a 100 con passo di 10, avendo come valore di default 20.
+Abbiamo evidenziato (mediante il bordo dorato) i top nodi in base alla centralità selezionata tramite il menù a tendina. Il numero di top nodi può essere variato tramite uno slider da 10 a 100 con passo di 10, avendo come valore di default 20.
 
 
 
